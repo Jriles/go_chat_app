@@ -1,7 +1,7 @@
 # Real Time Chat Application
 ## Hi! Thanks for checking out my project! 
 
-The purpose of this project is to showcase my ability to write and organize go code and manage things like sockets, controllers, queries, etc.
+The purpose of this project is to showcase my ability to write and organize go and manage things like sockets, controllers, queries, etc.
 
 ### Prerequisites
 
