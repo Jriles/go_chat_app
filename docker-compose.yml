@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.10.0
+    container_name: chat-app-neo4j-db 
+    environment:
+      - NEO4J_AUTH=neo4j/password
+    ports:
+      - "7687:7687"
+      - "7474:7474"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+
+  seed:
+    image: neo4j:5.10.0
+    depends_on:
+      - neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+    volumes:
+      - ./seed.cypher:/seed.cypher
+    command: -c "sleep 20 && cypher-shell -a bolt://neo4j:7687 -u neo4j -p password -f /seed.cypher"
+    entrypoint: /bin/bash
+
+  server:
+    build:
+      context: ./go_chat_app_server
+      dockerfile: Dockerfile
+    container_name: server
+    ports:
+      - 8080:8080
+    depends_on:
+      - neo4j
+
+  frontend:
+    build:
+      context: ./go_chat_app_frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - 3000:3000
+    depends_on:
+      - server
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+
