@@ -3,8 +3,7 @@ import React from 'react'
 const Home: React.FC = () => {
     return (
         <div className="max-w-md mx-auto">
-            <div className="text-2xl font-bold mb-6">Thanks for checking out my chat application!</div>
-	    <div className="text-xl mb-4">This app represents the frontend of my react-ts/go/neo4j project. Here's how to give it a try:</div>
+	    <div className="text-xl mb-4">As part of running docker-compose up, a couple of users should have already been created and made friends. Here's how to start chatting:</div>
 	    <ul className="list-disc list-inside space-y-2 text-gray-800">
 		<li>
 			<span className="font-bold">Login</span> with the first user by clicking Login at the top, and enter
@@ -25,7 +24,7 @@ const Home: React.FC = () => {
 		</li>
 		<li>Start chatting!</li>
 	    </ul>
-	    <div className="mt-4">Alternatively, you can create new users and make friends by entering the email of the user you wish to become friends with.</div>
+	    <div className="mt-4">Alternatively, you can create new users and make friends by entering the email of the user you wish to become friends with from the friends list view.</div>
     	</div>
     )
 }
