@@ -37,4 +37,4 @@ Once Docker Compose has started all services, which can take about 30 seconds, y
 
 ### Shutting Down
 
-To stop the application, press `Ctrl + C` in the terminal where Docker Compose is running, or run:
+To stop the application, press `Ctrl + C` from the project directory.
