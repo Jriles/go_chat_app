@@ -38,3 +38,9 @@ Once Docker Compose has started all services, which can take about 30 seconds, y
 ### Shutting Down
 
 To stop the application, press `Ctrl + C` from the project directory.
+
+### Features
+
+- **Real-time messaging** over WebSockets, with optional persistence to a Neo4j graph database.
+- **Multi-media file sharing** — upload images, videos, or any other file type from the chat view. Files are uploaded over HTTP, stored on the server, and broadcast to the other user's socket connection in real time. Images render as inline previews and videos autoplay muted; other file types render as a download link.
+- **Multi-device / LAN support** — the frontend resolves the API and WebSocket server from the hostname it was loaded from, so the same build works whether you're on `localhost` or accessing it from another device on the same network.
