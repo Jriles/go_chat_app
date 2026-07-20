@@ -105,7 +105,7 @@ func (c *MessagesController) PersistChatMessage(userID, friendID, content string
 		query := `
 		    MATCH (u:User {id: $userID}), (f:User {id: $friendID})
 		    CREATE (u)-[:SENT]->(m:Message {type: "text", content: $content, timestamp: timestamp()}),
-			   (m)-[:RECEIVED_BY]->(f)
+			   (m)-[:RECEIVED_BY {read: false}]->(f)
 		    RETURN m`
 		parameters := map[string]interface{}{
 			"userID":   userID,
@@ -135,7 +135,7 @@ func (c *MessagesController) PersistChatFileMessage(userID, friendID, fileURL, f
 		query := `
 		    MATCH (u:User {id: $userID}), (f:User {id: $friendID})
 		    CREATE (u)-[:SENT]->(m:Message {type: "file", fileUrl: $fileUrl, fileName: $fileName, mimeType: $mimeType, timestamp: timestamp()}),
-			   (m)-[:RECEIVED_BY]->(f)
+			   (m)-[:RECEIVED_BY {read: false}]->(f)
 		    RETURN m`
 		parameters := map[string]interface{}{
 			"userID":   userID,
@@ -219,18 +219,38 @@ func (c *MessagesController) UploadFile(context *gin.Context) {
 	})
 }
 
-// messageNodeToMap converts a Message node into a JSON-friendly map. Older
-// nodes were written without a "type" property, so it defaults to "text";
-// file-message properties are included only when present.
-func messageNodeToMap(node neo4j.Node) map[string]interface{} {
+// messageNodeToMap converts a {message, read} entry (a Message node paired
+// with the "read" property off its RECEIVED_BY relationship) into a
+// JSON-friendly map. Older nodes were written without a "type" property, so
+// it defaults to "text"; file-message properties are included only when
+// present. Messages persisted before read-tracking existed have no "read"
+// property on their relationship, so it defaults to true (already read)
+// rather than inflating unread counts for old data.
+func messageNodeToMap(entry interface{}) map[string]interface{} {
+	entryMap, ok := entry.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	node, ok := entryMap["message"].(neo4j.Node)
+	if !ok {
+		return nil
+	}
+
 	msgType, ok := node.Props["type"].(string)
 	if !ok || msgType == "" {
 		msgType = "text"
 	}
 
+	read, ok := entryMap["read"].(bool)
+	if !ok {
+		read = true
+	}
+
 	result := map[string]interface{}{
 		"type":      msgType,
 		"timestamp": node.Props["timestamp"].(int64),
+		"read":      read,
 	}
 
 	if content, ok := node.Props["content"].(string); ok {
@@ -249,6 +269,46 @@ func messageNodeToMap(node neo4j.Node) map[string]interface{} {
 	return result
 }
 
+// MarkMessagesRead marks every message the friend has sent to this user as
+// read, by setting read: true on the relevant RECEIVED_BY relationships.
+func (c *MessagesController) MarkMessagesRead(context *gin.Context) {
+	userID := context.Param("user_id")
+	friendID := context.Param("friend_id")
+
+	session := c.Driver.NewSession(neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer session.Close()
+
+	_, err := session.WriteTransaction(func(tx neo4j.Transaction) (interface{}, error) {
+		query := `
+		    MATCH (:User {id: $friendID})-[:SENT]->(:Message)-[rel:RECEIVED_BY]->(:User {id: $userID})
+		    SET rel.read = true`
+		parameters := map[string]interface{}{
+			"userID":   userID,
+			"friendID": friendID,
+		}
+		_, err := tx.Run(query, parameters)
+		return nil, err
+	})
+
+	if err != nil {
+		log.Printf("Error marking messages as read. UserID: %s, FriendID: %s, Error: %v", userID, friendID, err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": "failed to mark messages as read"})
+		return
+	}
+
+	// Let the sender know in real time, if they currently have this chat open.
+	if senderConn, ok := connections[fmt.Sprintf("%s-%s", friendID, userID)]; ok {
+		payload := map[string]string{"type": "read_receipt", "by": userID}
+		if msgJson, err := json.Marshal(payload); err == nil {
+			if err := senderConn.WriteMessage(websocket.TextMessage, msgJson); err != nil {
+				log.Println("Write error:", err)
+			}
+		}
+	}
+
+	context.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (c *MessagesController) GetChatMessages(context *gin.Context) {
 	userID := context.Param("user_id")
 	friendID := context.Param("friend_id")
@@ -262,10 +322,10 @@ func (c *MessagesController) GetChatMessages(context *gin.Context) {
 
 	_, err := session.ReadTransaction(func(tx neo4j.Transaction) (interface{}, error) {
 		query := `
-            OPTIONAL MATCH (u:User {id: $userID})-[:SENT]->(m:Message)-[:RECEIVED_BY]->(f:User {id: $friendID})
-	    WITH collect(m) as sentMessages
-            OPTIONAL MATCH (f:User {id: $friendID})-[:SENT]->(fm:Message)-[:RECEIVED_BY]->(u:User {id: $userID})
-            RETURN sentMessages, collect(fm) as receivedMessages`
+            OPTIONAL MATCH (u:User {id: $userID})-[:SENT]->(m:Message)-[sentRel:RECEIVED_BY]->(f:User {id: $friendID})
+	    WITH collect(CASE WHEN m IS NULL THEN NULL ELSE {message: m, read: sentRel.read} END) as sentMessages
+            OPTIONAL MATCH (f:User {id: $friendID})-[:SENT]->(fm:Message)-[receivedRel:RECEIVED_BY]->(u:User {id: $userID})
+            RETURN sentMessages, collect(CASE WHEN fm IS NULL THEN NULL ELSE {message: fm, read: receivedRel.read} END) as receivedMessages`
 		parameters := map[string]interface{}{
 			"userID":   userID,
 			"friendID": friendID,
@@ -280,15 +340,19 @@ func (c *MessagesController) GetChatMessages(context *gin.Context) {
 
 			sentMessagesList, _ := record.Get("sentMessages")
 			if sentMessagesList != nil {
-				for _, msg := range sentMessagesList.([]interface{}) {
-					sentMessages = append(sentMessages, messageNodeToMap(msg.(neo4j.Node)))
+				for _, entry := range sentMessagesList.([]interface{}) {
+					if m := messageNodeToMap(entry); m != nil {
+						sentMessages = append(sentMessages, m)
+					}
 				}
 			}
 
 			receivedMessagesList, _ := record.Get("receivedMessages")
 			if receivedMessagesList != nil {
-				for _, msg := range receivedMessagesList.([]interface{}) {
-					receivedMessages = append(receivedMessages, messageNodeToMap(msg.(neo4j.Node)))
+				for _, entry := range receivedMessagesList.([]interface{}) {
+					if m := messageNodeToMap(entry); m != nil {
+						receivedMessages = append(receivedMessages, m)
+					}
 				}
 			}
 		}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Routes, Route, Link } from 'react-router-dom'
+import { Routes, Route, Link, useLocation } from 'react-router-dom'
 import CreateUser from './views/CreateUser'
 import AddFriend from './views/AddFriend'
 import FriendsList from './views/UserFriends'
@@ -8,7 +8,8 @@ import LoginView from './views/LoginView'
 import Home from './views/Home'
 
 const App: React.FC = () => {
-    const [userId, setUserId] = useState<string | null>(null)
+    const [userId, setUserId] = useState<string | null>(() => sessionStorage.getItem('user_id'))
+    const location = useLocation()
 
     useEffect(() => {
         const handleStorageChange = () => {
@@ -16,11 +17,18 @@ const App: React.FC = () => {
             setUserId(storedUserId)
         }
 
-	// this is here because we want to reload the navbar after logging in or creating a user
+	// storage events only fire in other tabs, so this covers cross-tab sync
         window.addEventListener('storage', handleStorageChange)
         return () => {
             window.removeEventListener('storage', handleStorageChange)
-        }    }, [])
+        }
+    }, [])
+
+    useEffect(() => {
+	// login/create-user write sessionStorage then navigate in the same tab,
+	// which the storage event above can't see, so re-check on every route change
+        setUserId(sessionStorage.getItem('user_id'))
+    }, [location])
     return (
 	<>
 	    <nav className="pl-6 mb-4 h-10 items-center flex space-x-8 bg-blue-500 text-white">

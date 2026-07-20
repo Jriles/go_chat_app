@@ -11,6 +11,7 @@ interface Message {
     fileUrl?: string
     fileName?: string
     mimeType?: string
+    read?: boolean
 }
 
 const ChatView: React.FC = () => {
@@ -44,7 +45,7 @@ const ChatView: React.FC = () => {
                 const response = await axios.get(`${API_BASE_URL}/users/${user_id}/friends/${friend_id}/messages`)
                 const { sentMessages, receivedMessages } = response.data
 
-                type RawMessage = { content?: string, timestamp: string, type?: 'text' | 'file', fileUrl?: string, fileName?: string, mimeType?: string }
+                type RawMessage = { content?: string, timestamp: string, type?: 'text' | 'file', fileUrl?: string, fileName?: string, mimeType?: string, read?: boolean }
 
                 const combinedMessages = [
                     ...sentMessages.map((msg: RawMessage) => ({
@@ -54,7 +55,8 @@ const ChatView: React.FC = () => {
                         type: msg.type ?? 'text',
                         fileUrl: msg.fileUrl,
                         fileName: msg.fileName,
-                        mimeType: msg.mimeType
+                        mimeType: msg.mimeType,
+                        read: msg.read
                     })),
                     ...receivedMessages.map((msg: RawMessage) => ({
                         content: msg.content,
@@ -75,8 +77,17 @@ const ChatView: React.FC = () => {
             }
         }
 
+        const markMessagesRead = async () => {
+            try {
+                await axios.put(`${API_BASE_URL}/users/${user_id}/friends/${friend_id}/read`)
+            } catch (error) {
+                console.error('Error marking messages as read:', error)
+            }
+        }
+
         fetchMessages()
         fetchFriendDetails()
+        markMessagesRead()
     }, [user_id, friend_id])
 
     useEffect(() => {
@@ -97,6 +108,12 @@ const ChatView: React.FC = () => {
             if (data.status) {
                 if (data.userID === friend_id) {
                     setFriendStatus(data.status)
+                }
+            } else if (data.type === 'read_receipt') {
+                if (data.by === friend_id) {
+                    setMessages((prevMessages) =>
+                        prevMessages.map((m) => (m.sentByUser ? { ...m, read: true } : m))
+                    )
                 }
             } else {
                 const newMessage: Message = data.type === 'file'
@@ -119,6 +136,10 @@ const ChatView: React.FC = () => {
                     updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                     return updatedMessages
                 })
+
+                // the chat is open and receiving this live, so it counts as read immediately
+                axios.put(`${API_BASE_URL}/users/${user_id}/friends/${friend_id}/read`)
+                    .catch((error) => console.error('Error marking messages as read:', error))
             }
         }
 
@@ -142,7 +163,7 @@ const ChatView: React.FC = () => {
             }
             socket.current.send(JSON.stringify(messageObj))
             setMessages((prevMessages) => {
-                const updatedMessages = [...prevMessages, { type: 'text' as const, content: message, timestamp: messageObj.timestamp, sentByUser: true }]
+                const updatedMessages = [...prevMessages, { type: 'text' as const, content: message, timestamp: messageObj.timestamp, sentByUser: true, read: false }]
                 updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 return updatedMessages
             })
@@ -185,7 +206,7 @@ const ChatView: React.FC = () => {
             )
             const { fileUrl, fileName, mimeType, timestamp } = response.data
             setMessages((prevMessages) => {
-                const updatedMessages = [...prevMessages, { type: 'file' as const, fileUrl, fileName, mimeType, timestamp, sentByUser: true }]
+                const updatedMessages = [...prevMessages, { type: 'file' as const, fileUrl, fileName, mimeType, timestamp, sentByUser: true, read: false }]
                 updatedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
                 return updatedMessages
             })
@@ -211,38 +232,42 @@ const ChatView: React.FC = () => {
             </p>
 	    <div className="border rounded-lg p-4 mt-4 h-64 overflow-y-scroll flex flex-col" ref={chatContainerRef}>
                 {messages.map((msg, index) => (
-                    <div
-                        key={index}
-                        className={`mb-2 p-2 rounded-lg max-w-xs ${msg.sentByUser ? 'bg-blue-500 text-white ml-auto' : 'bg-gray-300 text-black mr-auto'}`}
-                    >
-                        {msg.type === 'file' ? (
-                            msg.mimeType?.startsWith('image/') ? (
-                                <a href={`${API_BASE_URL}${msg.fileUrl}`} target="_blank" rel="noreferrer">
-                                    <img src={`${API_BASE_URL}${msg.fileUrl}`} alt={msg.fileName} className="max-w-full rounded-lg" />
-                                </a>
-                            ) : msg.mimeType?.startsWith('video/') ? (
-                                <video
-                                    src={`${API_BASE_URL}${msg.fileUrl}`}
-                                    controls
-                                    autoPlay
-                                    muted
-                                    playsInline
-                                    className="max-w-full rounded-lg"
-                                />
+                    <React.Fragment key={index}>
+                        <div
+                            className={`mb-2 p-2 rounded-lg max-w-xs ${msg.sentByUser ? 'bg-blue-500 text-white ml-auto' : 'bg-gray-300 text-black mr-auto'}`}
+                        >
+                            {msg.type === 'file' ? (
+                                msg.mimeType?.startsWith('image/') ? (
+                                    <a href={`${API_BASE_URL}${msg.fileUrl}`} target="_blank" rel="noreferrer">
+                                        <img src={`${API_BASE_URL}${msg.fileUrl}`} alt={msg.fileName} className="max-w-full rounded-lg" />
+                                    </a>
+                                ) : msg.mimeType?.startsWith('video/') ? (
+                                    <video
+                                        src={`${API_BASE_URL}${msg.fileUrl}`}
+                                        controls
+                                        autoPlay
+                                        muted
+                                        playsInline
+                                        className="max-w-full rounded-lg"
+                                    />
+                                ) : (
+                                    <a href={`${API_BASE_URL}${msg.fileUrl}`} target="_blank" rel="noreferrer" className="underline break-all">
+                                        {msg.fileName}
+                                    </a>
+                                )
                             ) : (
-                                <a href={`${API_BASE_URL}${msg.fileUrl}`} target="_blank" rel="noreferrer" className="underline break-all">
-                                    {msg.fileName}
-                                </a>
-                            )
-                        ) : (
-                            msg.content
+                                msg.content
+                            )}
+                        </div>
+                        {msg.sentByUser && msg.read && index === messages.length - 1 && (
+                            <p className="text-xs text-gray-400 text-right -mt-1 mb-2">Read</p>
                         )}
-                    </div>
+                    </React.Fragment>
                 ))}
             </div>
 	    <div className="flex flex-row pt-4 gap-2">
 		<textarea
-		    className="border p-2 w-full rounded-lg w-max"
+		    className="border p-2 w-full rounded-lg w-full"
 		    rows={3}
 		    value={message}
 		    onChange={(e) => setMessage(e.target.value)}

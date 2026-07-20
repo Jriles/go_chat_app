@@ -3,10 +3,27 @@ import { useParams, Link } from 'react-router-dom'
 import axios from 'axios'
 import { API_BASE_URL } from '../constants'
 
+interface LastMessagePreview {
+    type: 'text' | 'file'
+    content?: string
+    fileName?: string
+    timestamp: string | number
+    read?: boolean
+}
+
 interface Friend {
     id: string
     name: string
     email: string
+    lastMessage?: LastMessagePreview
+    unreadCount?: number
+}
+
+const renderPreview = (friend: Friend) => {
+    const msg = friend.lastMessage
+    if (!msg) return 'No messages yet'
+    if (msg.type === 'file') return `\u{1F4CE} ${msg.fileName ?? 'File'}`
+    return msg.content
 }
 
 const FriendsList: React.FC = () => {
@@ -17,7 +34,24 @@ const FriendsList: React.FC = () => {
         const fetchFriends = async () => {
             try {
                 const response = await axios.get<Friend[]>(`${API_BASE_URL}/users/${user_id}/friends`)
-                setFriends(response.data)
+
+                const friendsWithPreviews = await Promise.all(
+                    response.data.map(async (friend) => {
+                        try {
+                            const messagesResponse = await axios.get(`${API_BASE_URL}/users/${user_id}/friends/${friend.id}/messages`)
+                            const { sentMessages, receivedMessages } = messagesResponse.data
+                            const allMessages: LastMessagePreview[] = [...sentMessages, ...receivedMessages]
+                            allMessages.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                            const unreadCount = receivedMessages.filter((msg: LastMessagePreview) => msg.read === false).length
+                            return { ...friend, lastMessage: allMessages[0], unreadCount }
+                        } catch (error) {
+                            console.error(`Error fetching messages for friend ${friend.id}:`, error)
+                            return friend
+                        }
+                    })
+                )
+
+                setFriends(friendsWithPreviews)
             } catch (error) {
                 console.error('Error fetching friends:', error)
             }
@@ -38,18 +72,22 @@ const FriendsList: React.FC = () => {
 		    </button>
 		</Link>
 	    </div>
-            <ul className="list-disc pl-5">
+            <ul className="space-y-2">
                 {friends.map((friend) => (
-                    <li key={friend.id} className="mb-2 flex justify-between items-center">
-                        <div>
-                            <p className="font-bold">{friend.name}</p>
-                            <p>{friend.email}</p>
-                        </div>
+                    <li key={friend.id}>
                         <Link
                             to={`/users/${user_id}/friends/${friend.id}/chat`}
-                            className="bg-blue-500 text-white px-4 py-2 rounded"
+                            className="flex items-center justify-between border rounded-lg p-4 hover:bg-gray-100 hover:border-blue-500 transition-colors cursor-pointer"
                         >
-                            Chat
+                            <div className="min-w-0">
+                                <p className="font-bold">{friend.name}</p>
+                                <p className="text-sm text-gray-500 truncate">{renderPreview(friend)}</p>
+                            </div>
+                            {!!friend.unreadCount && (
+                                <span className="bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-1 ml-2 shrink-0">
+                                    {friend.unreadCount}
+                                </span>
+                            )}
                         </Link>
                     </li>
                 ))}
@@ -59,4 +97,3 @@ const FriendsList: React.FC = () => {
 }
 
 export default FriendsList
-

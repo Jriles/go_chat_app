@@ -53,6 +53,7 @@ func main() {
 	router.GET("/users/:user_id/friends/:friend_id", friendsController.GetFriend)
 	router.GET("/users/:user_id/friends/:friend_id/messages", messagesController.GetChatMessages)
 	router.POST("/users/:user_id/friends/:friend_id/upload", messagesController.UploadFile)
+	router.PUT("/users/:user_id/friends/:friend_id/read", messagesController.MarkMessagesRead)
 	router.GET("/users/email/:email", usersController.GetUserByEmail)
 	router.Run("0.0.0.0:8080")
 }
