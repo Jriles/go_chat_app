@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import axios from 'axios'
+import { API_BASE_URL } from '../constants'
 
 interface Friend {
     id: string
@@ -15,7 +16,7 @@ const FriendsList: React.FC = () => {
     useEffect(() => {
         const fetchFriends = async () => {
             try {
-                const response = await axios.get<Friend[]>(`http://localhost:8080/users/${user_id}/friends`)
+                const response = await axios.get<Friend[]>(`${API_BASE_URL}/users/${user_id}/friends`)
                 setFriends(response.data)
             } catch (error) {
                 console.error('Error fetching friends:', error)

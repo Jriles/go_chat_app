@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
-import { User } from '../constants'
+import { User, API_BASE_URL } from '../constants'
 
 const CreateUser: React.FC = () => {
     const [name, setName] = useState('')
@@ -10,7 +10,7 @@ const CreateUser: React.FC = () => {
 
     const handleCreateUser = async () => {
         try {
-            const result = await axios.post('http://localhost:8080/users', { name, email })
+            const result = await axios.post(`${API_BASE_URL}/users`, { name, email })
             const userData: User = result.data
             navigate(`/users/${userData.id}/friends`)
         } catch (error) {

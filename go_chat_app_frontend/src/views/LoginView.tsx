@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
+import { API_BASE_URL } from '../constants'
 
 const LoginView: React.FC = () => {
     const [email, setEmail] = useState<string>('')
@@ -9,7 +10,7 @@ const LoginView: React.FC = () => {
 
     const handleLogin = async () => {
         try {
-            const response = await axios.get(`http://localhost:8080/users/email/${email}`)
+            const response = await axios.get(`${API_BASE_URL}/users/email/${email}`)
             const userId = response.data.id
             sessionStorage.removeItem('user_id')
             sessionStorage.setItem('user_id', userId)

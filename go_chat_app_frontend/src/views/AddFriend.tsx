@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import axios from 'axios'
+import { API_BASE_URL } from '../constants'
 
 const AddFriend: React.FC = () => {
     const { user_id } = useParams<{ user_id: string }>()
@@ -8,7 +9,7 @@ const AddFriend: React.FC = () => {
 
     const handleAddFriend = async () => {
         try {
-            await axios.post(`http://localhost:8080/users/${user_id}/friends`, { email })
+            await axios.post(`${API_BASE_URL}/users/${user_id}/friends`, { email })
             alert('Friend added successfully!')
             setEmail('')
         } catch (error) {
